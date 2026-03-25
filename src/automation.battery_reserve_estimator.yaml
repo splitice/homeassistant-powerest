@@ -130,7 +130,7 @@ actions:
         %} {% set battery_floor_wh = states(battery_floor_entity) | float(none)
         %} {% set daily_draw_kwh = states(daily_draw_entity) | float(none) %} {%
         set sell_by_wh = states(sell_by_wh_entity) | float(none) %} {%
-        set sell_by_wh_limit = sell_by_wh | float if sell_by_wh is not none else none %} {%
+        set sell_by_wh_limit = sell_by_wh | float(0) if sell_by_wh is not none else none %} {%
         set daily_draw_wh = (daily_draw_kwh * 1000) if daily_draw_kwh is not
         none else none %} {% set hourly_draw_wh = (daily_draw_wh / 24) if
         daily_draw_wh is not none else none %} {% set historical_usage =
@@ -197,13 +197,14 @@ actions:
             ) %}
             {% set export_start_hour = export_window_start_hour | int %}
             {% set export_end_hour = export_window_end_hour | int %}
+            {# Same-day export window: start hour must be lower than end hour. #}
             {% if export_end_hour > export_start_hour %}
               {% set active_export_start = [export_start_hour, export_eval.now_hour] | max %}
               {% if active_export_start < export_end_hour %}
                 {% set export_eval.export_hours = export_end_hour - active_export_start %}
               {% endif %}
             {% endif %}
-            {% set max_export_kwh_total = (export_eval.export_hours | float(0)) * (max_export_kwh_per_hour | float) %}
+            {% set max_export_kwh_total = (export_eval.export_hours | float(0)) * (max_export_kwh_per_hour | float(10)) %}
             {% if sell_by_wh is not none %}
               {% for hour_key in forecast_hours %}
                 {% set forecast_day = hour_key[:10] %}
@@ -234,7 +235,7 @@ actions:
                   {% endif %}
                 {% endif %}
               {% endfor %}
-              {% if export_eval.max_tomorrow is not none and (export_eval.max_tomorrow | float) > sell_by_wh_limit %}
+              {% if sell_by_wh_limit is not none and export_eval.max_tomorrow is not none and (export_eval.max_tomorrow | float) > sell_by_wh_limit %}
                 {% set export_eval.needs_export = true %}
               {% endif %}
               {% if export_eval.needs_export and export_eval.end_tomorrow is not none and max_export_kwh_total > 0 %}
