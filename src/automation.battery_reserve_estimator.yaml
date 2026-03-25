@@ -1,6 +1,6 @@
 alias: "Battery: Reserve Estimator"
 description: >
-  Estimate how many hours (up to the available 7-day forecast window) the house
+  Estimate how many hours (within the available 7-day forecast window) the house
   can run from current battery reserves plus solar forecast, using hourly
   simulation with no hourly deficits allowed below the permitted floor. Then
   calculate the minimum starting battery charge required for that duration by
@@ -184,11 +184,11 @@ actions:
             {% endfor %}
 
             {% set forecast_days = ns.days[:max_days] %}
-            {% set usable_day_count = forecast_days | count %}
-            {% if usable_day_count == 0 %}
+            {% set usable_days_count = forecast_days | count %}
+            {% if usable_days_count == 0 %}
               -1|0|{{ ns.hours_found }}|0|{{ current_battery_wh }}|{{ hourly_draw_wh }}
             {% else %}
-              {% for day_count in range(usable_day_count, 0, -1) %}
+              {% for day_count in range(usable_days_count, 0, -1) %}
                 {% if not ns.found %}
                   {% set candidate_days = forecast_days[:day_count] %}
                   {% set hrs = namespace(out=[]) %}
@@ -258,9 +258,9 @@ actions:
               {% endfor %}
 
               {% if ns.best_hours > 0 %}
-                {{ (ns.best_required / 1000) | round(2) }}|{{ ns.best_hours }}|{{ ns.hours_found }}|{{ usable_day_count }}|{{ ns.best_max_battery }}|{{ hourly_draw_wh }}
+                {{ (ns.best_required / 1000) | round(2) }}|{{ ns.best_hours }}|{{ ns.hours_found }}|{{ usable_days_count }}|{{ ns.best_max_battery }}|{{ hourly_draw_wh }}
               {% else %}
-                -1|0|{{ ns.hours_found }}|{{ usable_day_count }}|{{ current_battery_wh }}|{{ hourly_draw_wh }}
+                -1|0|{{ ns.hours_found }}|{{ usable_days_count }}|{{ current_battery_wh }}|{{ hourly_draw_wh }}
               {% endif %}
             {% endif %}
           {% endif %}
