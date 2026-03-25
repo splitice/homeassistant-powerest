@@ -1,0 +1,154 @@
+alias: "Battery: Reserve Estimator"
+description: >
+  Estimate how many full days (up to 7) the house can run from current battery
+  reserves plus solar forecast, using hourly simulation with no hourly deficits
+  allowed below the permitted floor. Then calculate the minimum starting battery
+  charge required for that many days by working backwards hour by hour. Stores
+  -1 if no usable solution can be found.
+triggers:
+  - minutes: /15
+    trigger: time_pattern
+  - entity_id:
+      - sensor.battery_wh
+      - sensor.estimated_daily_power_draw
+      - input_number.battery_false_floor_wh
+    trigger: state
+actions:
+  - variables:
+      forecast_entities:
+        - sensor.home_energy_production_today
+        - sensor.home_energy_production_tomorrow
+        - sensor.home_energy_production_d2
+        - sensor.home_energy_production_d3
+        - sensor.home_energy_production_d4
+        - sensor.home_energy_production_d5
+        - sensor.home_energy_production_d6
+        - sensor.home_energy_production_d7
+        - sensor.home_energy_production_today_2
+        - sensor.home_energy_production_tomorrow_2
+        - sensor.home_energy_production_d2_2
+        - sensor.home_energy_production_d3_2
+        - sensor.home_energy_production_d4_2
+        - sensor.home_energy_production_d5_2
+        - sensor.home_energy_production_d6_2
+        - sensor.home_energy_production_d7_2
+      current_battery_entity: sensor.actual_battery_capacity_remaining
+      daily_draw_entity: sensor.estimated_daily_power_draw
+      battery_floor_entity: input_number.battery_false_floor_wh
+      required_battery_kwh_entity: input_number.required_battery_kwh
+      zero_draw_days_entity: input_number.zero_draw_days_possible
+      max_battery_level: input_number.battery_est_max_level_wh
+      max_days: 7
+      result: >-
+        {% set current_battery_wh = states(current_battery_entity) | float(none)
+        %} {% set battery_floor_wh = states(battery_floor_entity) | float(none)
+        %} {% set daily_draw_kwh = states(daily_draw_entity) | float(none) %} {%
+        set daily_draw_wh = (daily_draw_kwh * 1000) if daily_draw_kwh is not
+        none else none %} {% set hourly_draw_wh = (daily_draw_wh / 24) if
+        daily_draw_wh is not none else none %}
+
+        {% if current_battery_wh is none or battery_floor_wh is none or
+        hourly_draw_wh is none %}
+          -1|0|0|0|{{ current_battery_wh if current_battery_wh is not none else 'none' }}|{{ hourly_draw_wh if hourly_draw_wh is not none else 'none' }}
+        {% else %}
+          {% set ns = namespace(
+            merged={},
+            days=[],
+            best_days=0,
+            best_required=-1,
+            hours_found=0,
+            found=false
+          ) %}
+
+          {# include the current hour, not only times strictly after now #}
+          {% set current_hour_ts = as_timestamp(now().replace(minute=0, second=0, microsecond=0)) %}
+
+          {# merge all wh_period entries by hour #}
+          {% for ent in forecast_entities %}
+            {% set wp = state_attr(ent, 'wh_period') %}
+            {% if wp is mapping %}
+              {% for ts, val in wp.items() %}
+                {% set t = as_timestamp(ts, default=none) %}
+                {% if t is not none and t >= current_hour_ts %}
+                  {% set hour_key = as_datetime(ts).strftime('%Y-%m-%dT%H:00:00') %}
+                  {% set existing = ns.merged.get(hour_key, 0) | float(0) %}
+                  {% set ns.merged = ns.merged | combine({hour_key: existing + (val | float(0))}) %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+
+          {% set forecast_hours = ns.merged.keys() | list | sort %}
+          {% set ns.hours_found = forecast_hours | count %}
+
+          {% if ns.hours_found == 0 %}
+            -1|0|0|0|{{ current_battery_wh }}|{{ hourly_draw_wh }}
+          {% else %}
+            {% for h in forecast_hours %}
+              {% set d = h[:10] %}
+              {% if d not in ns.days %}
+                {% set ns.days = ns.days + [d] %}
+              {% endif %}
+            {% endfor %}
+
+            {% set forecast_days = ns.days[:max_days] %}
+            {% set usable_day_count = forecast_days | count %}
+
+            {% if usable_day_count == 0 %}
+              -1|0|{{ ns.hours_found }}|0|{{ current_battery_wh }}|{{ hourly_draw_wh }}
+            {% else %}
+              {% for day_count in range(usable_day_count, 0, -1) %}
+                {% if not ns.found %}
+                  {% set candidate_days = forecast_days[:day_count] %}
+                  {% set hrs = namespace(out=[]) %}
+
+                  {% for h in forecast_hours %}
+                    {% if h[:10] in candidate_days %}
+                      {% set hrs.out = hrs.out + [h] %}
+                    {% endif %}
+                  {% endfor %}
+
+                  {% if (hrs.out | count) > 0 %}
+                    {% set req = namespace(after=battery_floor_wh | float(0)) %}
+
+                    {% for hour_key in (hrs.out | reverse | list) %}
+                      {% set solar_wh = ns.merged.get(hour_key, 0) | float(0) %}
+                      {% set before = (req.after | float(0)) + (hourly_draw_wh | float(0)) - solar_wh %}
+                      {% if before < (battery_floor_wh | float(0)) %}
+                        {% set before = battery_floor_wh | float(0) %}
+                      {% endif %}
+                      {% set req.after = before %}
+                    {% endfor %}
+
+                    {% if (req.after | float(0)) <= (current_battery_wh | float(0)) %}
+                      {% set ns.best_days = day_count %}
+                      {% set ns.best_required = req.after | float(0) %}
+                      {% set ns.found = true %}
+                    {% endif %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+
+              {% if ns.best_days > 0 %}
+                {{ (ns.best_required / 1000) | round(2) }}|{{ ns.best_days }}|{{ ns.hours_found }}|{{ usable_day_count }}|{{ current_battery_wh }}|{{ hourly_draw_wh }}
+              {% else %}
+                -1|0|{{ ns.hours_found }}|{{ usable_day_count }}|{{ current_battery_wh }}|{{ hourly_draw_wh }}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        {% endif %}
+  - action: input_number.set_value
+    target:
+      entity_id: "{{ required_battery_kwh_entity }}"
+    data:
+      value: "{{ result.split('|')[0] | float(-1) }}"
+  - action: input_number.set_value
+    target:
+      entity_id: "{{ zero_draw_days_entity }}"
+    data:
+      value: "{{ result.split('|')[1] | int(0) }}"
+  - action: persistent_notification.create
+    data:
+      title: Battery estimator debug
+      message: result={{ result }}
+mode: single
