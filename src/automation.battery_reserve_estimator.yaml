@@ -116,8 +116,6 @@ actions:
 
           {% set out.days = out.days | combine({
             day_key: {
-              'hour_count': count,
-              'total_wh': total,
               'scale': scale,
               'hours': day_hours
             }
@@ -365,5 +363,4 @@ actions:
         result={{ result }}
         needs_export={{ result.split('|')[6] | int(0) }}
         safe_export_kwh={{ result.split('|')[7] | float(0) }}
-        historical_usage_estimate_json={{ historical_usage_estimate_json }}
 mode: single
