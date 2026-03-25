@@ -85,8 +85,9 @@ actions:
               {% if usage_wh < 0 %}
                 {% set usage_wh = 0 %}
               {% endif %}
-              {% set day_key = as_datetime(start).strftime('%Y-%m-%d') if start is not none else none %}
-              {% set hour_key = as_datetime(start).strftime('%H') | int if start is not none else none %}
+              {% set start_dt = as_datetime(start) if start is not none else none %}
+              {% set day_key = start_dt.strftime('%Y-%m-%d') if start_dt is not none else none %}
+              {% set hour_key = start_dt.strftime('%H') | int if start_dt is not none else none %}
               {% if day_key is not none and hour_key is not none %}
                 {% set existing_day = ns.usage_by_day.get(day_key, {}) %}
                 {% set ns.usage_by_day = ns.usage_by_day | combine({
