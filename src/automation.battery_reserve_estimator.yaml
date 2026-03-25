@@ -210,12 +210,11 @@ actions:
               {% for hour_key in forecast_hours %}
                 {% set forecast_day = hour_key[:10] %}
                 {% set historical_day_dt = as_datetime(forecast_day) - timedelta(days=7) %}
-                {% set historical_day = historical_day_dt.strftime('%Y-%m-%d') %}
                 {# Keep historical lookup in the past even around week/year boundaries. #}
-                {% if historical_day >= export_eval.today_day %}
+                {% if historical_day_dt.strftime('%Y-%m-%d') >= export_eval.today_day %}
                   {% set historical_day_dt = historical_day_dt - timedelta(days=7) %}
-                  {% set historical_day = historical_day_dt.strftime('%Y-%m-%d') %}
                 {% endif %}
+                {% set historical_day = historical_day_dt.strftime('%Y-%m-%d') %}
                 {% set historical_day_data = historical_usage.get(historical_day, {}) %}
                 {% set historical_day_hours = historical_day_data.get('hours', {}) %}
                 {% set historical_day_scale = historical_day_data.get('scale', 1) | float(1) %}
