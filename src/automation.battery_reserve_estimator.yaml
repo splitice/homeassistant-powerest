@@ -18,11 +18,12 @@ actions:
     data:
       statistic_ids:
         - sensor.goodwe_house_consumption
-      # Use N-8..N-1 history window so current-day partial data is excluded.
+      # Use midnight-aligned N-8..N-1 history window so current-day partial
+      # data is excluded and each historical day is complete.
       start_time: >-
-        {{ (now() - timedelta(days=8)).replace(minute=0, second=0, microsecond=0).isoformat() }}
+        {{ (now() - timedelta(days=8)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat() }}
       end_time: >-
-        {{ (now() - timedelta(days=1)).replace(minute=0, second=0, microsecond=0).isoformat() }}
+        {{ (now() - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat() }}
       period: hour
       types:
         - mean
