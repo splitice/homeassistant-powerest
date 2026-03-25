@@ -133,8 +133,7 @@ actions:
         {% set current_battery_wh = states(current_battery_entity) | float(none) %}
         {% set battery_floor_wh = states(battery_floor_entity) | float(none) %}
         {% set daily_draw_kwh = states(daily_draw_entity) | float(none) %}
-        {% set daily_draw_wh = (daily_draw_kwh * 1000) if daily_draw_kwh is not
-        none else none %}
+        {% set daily_draw_wh = (daily_draw_kwh * 1000) if daily_draw_kwh is not none else none %}
         {% set hourly_draw_wh = (daily_draw_wh / 24) if daily_draw_wh is not none else none %}
         {% set historical_usage = historical_usage_estimate_json | from_json if historical_usage_estimate_json is string else {} %}
 
@@ -273,7 +272,8 @@ actions:
         {% set sell_by_wh = states(sell_by_wh_entity) | float(none) %}
         {% set sell_by_wh_limit = sell_by_wh | float(0) if sell_by_wh is not none else none %}
         {% set daily_draw_wh = (daily_draw_kwh * 1000) if daily_draw_kwh is not none else none %}
-        {% set hourly_draw_wh = (daily_draw_wh / 24) if daily_draw_wh is not none else none %} {% set historical_usage = historical_usage_estimate_json | from_json if historical_usage_estimate_json is string else {} %}
+        {% set hourly_draw_wh = (daily_draw_wh / 24) if daily_draw_wh is not none else none %}
+        {% set historical_usage = historical_usage_estimate_json | from_json if historical_usage_estimate_json is string else {} %}
 
         {% if current_battery_wh is none or hourly_draw_wh is none or sell_by_wh_limit is none %}
           0|0
