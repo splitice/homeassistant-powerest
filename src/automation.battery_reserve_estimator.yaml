@@ -186,10 +186,11 @@ actions:
             {% set usable_day_count = forecast_days | count %}
             {% set export_eval = namespace(
               tomorrow_day=(now() + timedelta(days=1)).strftime('%Y-%m-%d'),
-              today_day_dt=now().replace(hour=0, minute=0, second=0, microsecond=0),
+              today_day=now().strftime('%Y-%m-%d'),
               now_hour=now().hour,
               level=current_battery_wh | float(0),
               max_tomorrow=none,
+              min_tomorrow=none,
               end_tomorrow=none,
               needs_export=false,
               safe_export_kwh=0,
@@ -209,11 +210,12 @@ actions:
               {% for hour_key in forecast_hours %}
                 {% set forecast_day = hour_key[:10] %}
                 {% set historical_day_dt = as_datetime(forecast_day) - timedelta(days=7) %}
-                {# Keep historical lookup in the past even around week/year boundaries. #}
-                {% if historical_day_dt >= export_eval.today_day_dt %}
-                  {% set historical_day_dt = historical_day_dt - timedelta(days=7) %}
-                {% endif %}
                 {% set historical_day = historical_day_dt.strftime('%Y-%m-%d') %}
+                {# Keep historical lookup in the past even around week/year boundaries. #}
+                {% if historical_day >= export_eval.today_day %}
+                  {% set historical_day_dt = historical_day_dt - timedelta(days=7) %}
+                  {% set historical_day = historical_day_dt.strftime('%Y-%m-%d') %}
+                {% endif %}
                 {% set historical_day_data = historical_usage.get(historical_day, {}) %}
                 {% set historical_day_hours = historical_day_data.get('hours', {}) %}
                 {% set historical_day_scale = historical_day_data.get('scale', 1) | float(1) %}
@@ -230,6 +232,9 @@ actions:
                   {% if export_eval.max_tomorrow is none or (export_eval.level | float(0)) > (export_eval.max_tomorrow | float(0)) %}
                     {% set export_eval.max_tomorrow = export_eval.level | float(0) %}
                   {% endif %}
+                  {% if export_eval.min_tomorrow is none or (export_eval.level | float(0)) < (export_eval.min_tomorrow | float(0)) %}
+                    {% set export_eval.min_tomorrow = export_eval.level | float(0) %}
+                  {% endif %}
                   {% if (hour_key[11:13] | int(0)) == 23 %}
                     {% set export_eval.end_tomorrow = export_eval.level | float(0) %}
                   {% endif %}
@@ -238,8 +243,10 @@ actions:
               {% if sell_by_wh_limit is not none and export_eval.max_tomorrow is not none and (export_eval.max_tomorrow | float) > sell_by_wh_limit %}
                 {% set export_eval.needs_export = true %}
               {% endif %}
-              {% if export_eval.needs_export and export_eval.end_tomorrow is not none and max_export_kwh_total > 0 %}
-                {% set exportable_surplus_kwh = ((export_eval.end_tomorrow | float) - sell_by_wh_limit) / 1000 %}
+              {% if export_eval.needs_export and export_eval.end_tomorrow is not none and export_eval.min_tomorrow is not none and max_export_kwh_total > 0 %}
+                {% set end_surplus_kwh = ((export_eval.end_tomorrow | float) - sell_by_wh_limit) / 1000 %}
+                {% set min_tomorrow_surplus_kwh = ((export_eval.min_tomorrow | float) - sell_by_wh_limit) / 1000 %}
+                {% set exportable_surplus_kwh = [end_surplus_kwh, min_tomorrow_surplus_kwh] | min %}
                 {% if exportable_surplus_kwh > 0 %}
                   {% if exportable_surplus_kwh < max_export_kwh_total %}
                     {% set export_eval.safe_export_kwh = exportable_surplus_kwh %}
