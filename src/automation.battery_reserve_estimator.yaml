@@ -349,8 +349,12 @@ actions:
             {% endif %}
             {% if export_eval.needs_export and export_eval.level_at_sell_by is not none and max_export_kwh_total > 0 %}
               {% set exportable_surplus_kwh = ((export_eval.level_at_sell_by | float(0)) - sell_by_wh_limit) / 1000 %}
-              {% if exportable_surplus_kwh > 0 and exportable_surplus_kwh <= max_export_kwh_total %}
-                {% set export_eval.safe_export_kwh = exportable_surplus_kwh %}
+              {% if exportable_surplus_kwh > 0 %}
+                {% if exportable_surplus_kwh < max_export_kwh_total %}
+                  {% set export_eval.safe_export_kwh = exportable_surplus_kwh %}
+                {% else %}
+                  {% set export_eval.safe_export_kwh = max_export_kwh_total %}
+                {% endif %}
               {% endif %}
             {% endif %}
             {{ 1 if export_eval.needs_export else 0 }}|{{ export_eval.safe_export_kwh | round(2) }}
