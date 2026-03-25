@@ -50,16 +50,66 @@ actions:
       zero_draw_days_entity: input_number.zero_draw_days_possible
       max_battery_level: input_number.battery_est_max_level_wh
       max_days: 7
+      historical_usage_estimate_json: >-
+        {% set daily_draw_kwh = states(daily_draw_entity) | float(none) %}
+        {% set daily_draw_wh = (daily_draw_kwh * 1000) if daily_draw_kwh is not
+        none else none %}
+        {% set stats = house_consumption_stats if house_consumption_stats is
+        mapping else {} %}
+        {% set stats_rows = stats.get('sensor.goodwe_house_consumption', []) if
+        stats is mapping else [] %}
+        {% set ns = namespace(hours_by_day={}, totals={}, counts={}) %}
+        {% for row in stats_rows %}
+          {% if row is mapping %}
+            {% set start = row.get('start') %}
+            {% set start_dt = as_datetime(start) if start is not none else none %}
+            {% set usage_wh = row.get('change', 0) | float(0) %}
+            {% if usage_wh < 0 %}
+              {% set usage_wh = 0 %}
+            {% endif %}
+            {% if start_dt is not none %}
+              {% set day_key = start_dt.strftime('%Y-%m-%d') %}
+              {% set hour_key = start_dt.strftime('%H') | int %}
+              {% set existing_day = ns.hours_by_day.get(day_key, {}) %}
+              {% set ns.hours_by_day = ns.hours_by_day | combine({
+                day_key: existing_day | combine({hour_key: usage_wh})
+              }) %}
+              {% set ns.totals = ns.totals | combine({
+                day_key: (ns.totals.get(day_key, 0) | float(0)) + usage_wh
+              }) %}
+              {% set ns.counts = ns.counts | combine({
+                day_key: (ns.counts.get(day_key, 0) | int(0)) + 1
+              }) %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        {% set out = namespace(days={}) %}
+        {% for day_key, day_hours in ns.hours_by_day.items() %}
+          {% set total = ns.totals.get(day_key, 0) | float(0) %}
+          {% set count = ns.counts.get(day_key, 0) | int(0) %}
+          {% set scale = 1 %}
+          {% if daily_draw_wh is not none and count == 24 and total > 0 and total < (daily_draw_wh | float(0)) %}
+            {% set scale = (daily_draw_wh | float(0)) / total %}
+          {% endif %}
+          {% set out.days = out.days | combine({
+            day_key: {
+              'hour_count': count,
+              'total_wh': total,
+              'scale': scale,
+              'hours': day_hours
+            }
+          }) %}
+        {% endfor %}
+        {{ out.days | tojson }}
       result: >-
         {% set current_battery_wh = states(current_battery_entity) | float(none)
         %} {% set battery_floor_wh = states(battery_floor_entity) | float(none)
         %} {% set daily_draw_kwh = states(daily_draw_entity) | float(none) %} {%
         set daily_draw_wh = (daily_draw_kwh * 1000) if daily_draw_kwh is not
         none else none %} {% set hourly_draw_wh = (daily_draw_wh / 24) if
-        daily_draw_wh is not none else none %} {% set stats = house_consumption_stats
-        if house_consumption_stats is mapping else {} %} {% set stats_rows =
-        stats.get('sensor.goodwe_house_consumption', []) if stats is mapping else
-        [] %}
+        daily_draw_wh is not none else none %} {% set historical_usage =
+        historical_usage_estimate_json | from_json if
+        historical_usage_estimate_json is string else {} %}
 
         {% if current_battery_wh is none or battery_floor_wh is none or
         hourly_draw_wh is none %}
@@ -67,8 +117,6 @@ actions:
         {% else %}
           {% set ns = namespace(
             merged={},
-            usage_by_day={},
-            usage_day_totals={},
             days=[],
             best_days=0,
             best_required=-1,
@@ -76,29 +124,6 @@ actions:
             hours_found=0,
             found=false
           ) %}
-
-          {# build hourly usage history by day from previous-week statistics #}
-          {% for row in stats_rows %}
-            {% if row is mapping %}
-              {% set start = row.get('start') %}
-              {% set usage_wh = row.get('change', 0) | float(0) %}
-              {% if usage_wh < 0 %}
-                {% set usage_wh = 0 %}
-              {% endif %}
-              {% set start_dt = as_datetime(start) if start is not none else none %}
-              {% set day_key = start_dt.strftime('%Y-%m-%d') if start_dt is not none else none %}
-              {% set hour_key = start_dt.strftime('%H') | int if start_dt is not none else none %}
-              {% if day_key is not none and hour_key is not none %}
-                {% set existing_day = ns.usage_by_day.get(day_key, {}) %}
-                {% set ns.usage_by_day = ns.usage_by_day | combine({
-                  day_key: existing_day | combine({hour_key: usage_wh})
-                }) %}
-                {% set ns.usage_day_totals = ns.usage_day_totals | combine({
-                  day_key: (ns.usage_day_totals.get(day_key, 0) | float(0)) + usage_wh
-                }) %}
-              {% endif %}
-            {% endif %}
-          {% endfor %}
 
           {# include the current hour, not only times strictly after now #}
           {% set current_hour_ts = as_timestamp(now().replace(minute=0, second=0, microsecond=0)) %}
@@ -154,19 +179,18 @@ actions:
                       {# hour_key format is YYYY-MM-DDTHH:00:00 from merged forecast keys #}
                       {% set forecast_day = hour_key[:10] %}
                       {% set historical_day = (as_datetime(forecast_day) - timedelta(days=7)).strftime('%Y-%m-%d') %}
-                      {% set historical_day_hours = ns.usage_by_day.get(historical_day, {}) %}
-                      {% set historical_day_total = ns.usage_day_totals.get(historical_day, 0) | float(0) %}
+                      {% set historical_day_data = historical_usage.get(historical_day, {}) %}
+                      {% set historical_day_hours = historical_day_data.get('hours', {}) %}
+                      {% set historical_day_scale = historical_day_data.get('scale', 1) | float(1) %}
                       {% set historical_hour = hour_key[11:13] | int %}
                       {% set base_usage_wh = historical_day_hours.get(historical_hour, none) %}
                       {% if base_usage_wh is none %}
-                        {% set base_usage_wh = hourly_draw_wh | float(0) %}
-                      {% endif %}
-                      {% set scale = 1 %}
-                      {% if historical_day_total > 0 and historical_day_total < (daily_draw_wh | float(0)) %}
-                        {% set scale = (daily_draw_wh | float(0)) / historical_day_total %}
+                        {% set hourly_usage_wh = hourly_draw_wh | float(0) %}
+                      {% else %}
+                        {% set hourly_usage_wh = (base_usage_wh | float(0)) * historical_day_scale %}
                       {% endif %}
                       {% set usage.by_hour = usage.by_hour | combine({
-                        hour_key: (base_usage_wh | float(0)) * (scale | float(1))
+                        hour_key: hourly_usage_wh | float(0)
                       }) %}
                     {% endfor %}
 
@@ -229,5 +253,7 @@ actions:
   - action: persistent_notification.create
     data:
       title: Battery estimator debug
-      message: result={{ result }}
+      message: |-
+        result={{ result }}
+        historical_usage_estimate_json={{ historical_usage_estimate_json }}
 mode: single
