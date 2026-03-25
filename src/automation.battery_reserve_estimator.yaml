@@ -56,6 +56,7 @@ actions:
             days=[],
             best_days=0,
             best_required=-1,
+            best_max_battery=current_battery_wh,
             hours_found=0,
             found=false
           ) %}
@@ -121,8 +122,17 @@ actions:
                     {% endfor %}
 
                     {% if (req.after | float(0)) <= (current_battery_wh | float(0)) %}
+                      {% set sim = namespace(level=current_battery_wh | float(0), max=current_battery_wh | float(0)) %}
+                      {% for hour_key in hrs.out %}
+                        {% set solar_wh = ns.merged.get(hour_key, 0) | float(0) %}
+                        {% set sim.level = (sim.level | float(0)) + solar_wh - (hourly_draw_wh | float(0)) %}
+                        {% if (sim.level | float(0)) > (sim.max | float(0)) %}
+                          {% set sim.max = sim.level | float(0) %}
+                        {% endif %}
+                      {% endfor %}
                       {% set ns.best_days = day_count %}
                       {% set ns.best_required = req.after | float(0) %}
+                      {% set ns.best_max_battery = sim.max | float(0) %}
                       {% set ns.found = true %}
                     {% endif %}
                   {% endif %}
@@ -130,7 +140,7 @@ actions:
               {% endfor %}
 
               {% if ns.best_days > 0 %}
-                {{ (ns.best_required / 1000) | round(2) }}|{{ ns.best_days }}|{{ ns.hours_found }}|{{ usable_day_count }}|{{ current_battery_wh }}|{{ hourly_draw_wh }}
+                {{ (ns.best_required / 1000) | round(2) }}|{{ ns.best_days }}|{{ ns.hours_found }}|{{ usable_day_count }}|{{ ns.best_max_battery }}|{{ hourly_draw_wh }}
               {% else %}
                 -1|0|{{ ns.hours_found }}|{{ usable_day_count }}|{{ current_battery_wh }}|{{ hourly_draw_wh }}
               {% endif %}
