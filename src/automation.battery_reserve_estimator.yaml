@@ -14,6 +14,16 @@ triggers:
       - input_number.battery_false_floor_wh
     trigger: state
 actions:
+  - action: recorder.get_statistics
+    data:
+      statistic_ids:
+        - sensor.goodwe_house_consumption
+      start_time: >-
+        {{ (now() - timedelta(days=7)).replace(minute=0, second=0, microsecond=0).isoformat() }}
+      period: hour
+      types:
+        - change
+    response_variable: house_consumption_stats
   - variables:
       forecast_entities:
         - sensor.home_energy_production_today
@@ -45,7 +55,10 @@ actions:
         %} {% set daily_draw_kwh = states(daily_draw_entity) | float(none) %} {%
         set daily_draw_wh = (daily_draw_kwh * 1000) if daily_draw_kwh is not
         none else none %} {% set hourly_draw_wh = (daily_draw_wh / 24) if
-        daily_draw_wh is not none else none %}
+        daily_draw_wh is not none else none %} {% set stats = house_consumption_stats
+        if house_consumption_stats is mapping else {} %} {% set stats_rows =
+        stats.get('sensor.goodwe_house_consumption', []) if stats is mapping else
+        [] %}
 
         {% if current_battery_wh is none or battery_floor_wh is none or
         hourly_draw_wh is none %}
@@ -53,6 +66,8 @@ actions:
         {% else %}
           {% set ns = namespace(
             merged={},
+            usage_by_day={},
+            usage_day_totals={},
             days=[],
             best_days=0,
             best_required=-1,
@@ -60,6 +75,28 @@ actions:
             hours_found=0,
             found=false
           ) %}
+
+          {# build hourly usage history by day from previous-week statistics #}
+          {% for row in stats_rows %}
+            {% if row is mapping %}
+              {% set start = row.get('start') %}
+              {% set usage_wh = row.get('change', 0) | float(0) %}
+              {% if usage_wh < 0 %}
+                {% set usage_wh = 0 %}
+              {% endif %}
+              {% set day_key = as_datetime(start).strftime('%Y-%m-%d') if start is not none else none %}
+              {% set hour_key = as_datetime(start).strftime('%H') | int if start is not none else none %}
+              {% if day_key is not none and hour_key is not none %}
+                {% set existing_day = ns.usage_by_day.get(day_key, {}) %}
+                {% set ns.usage_by_day = ns.usage_by_day | combine({
+                  day_key: existing_day | combine({hour_key: usage_wh})
+                }) %}
+                {% set ns.usage_day_totals = ns.usage_day_totals | combine({
+                  day_key: (ns.usage_day_totals.get(day_key, 0) | float(0)) + usage_wh
+                }) %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
 
           {# include the current hour, not only times strictly after now #}
           {% set current_hour_ts = as_timestamp(now().replace(minute=0, second=0, microsecond=0)) %}
@@ -114,7 +151,21 @@ actions:
 
                     {% for hour_key in (hrs.out | reverse | list) %}
                       {% set solar_wh = ns.merged.get(hour_key, 0) | float(0) %}
-                      {% set before = (req.after | float(0)) + (hourly_draw_wh | float(0)) - solar_wh %}
+                      {% set forecast_day = hour_key[:10] %}
+                      {% set historical_day = (as_datetime(forecast_day) - timedelta(days=7)).strftime('%Y-%m-%d') %}
+                      {% set historical_day_hours = ns.usage_by_day.get(historical_day, {}) %}
+                      {% set historical_day_total = ns.usage_day_totals.get(historical_day, 0) | float(0) %}
+                      {% set historical_hour = hour_key[11:13] | int %}
+                      {% set base_usage_wh = historical_day_hours.get(historical_hour, none) %}
+                      {% if base_usage_wh is none %}
+                        {% set base_usage_wh = hourly_draw_wh | float(0) %}
+                      {% endif %}
+                      {% set scale = 1 %}
+                      {% if historical_day_total > 0 and historical_day_total < (daily_draw_wh | float(0)) %}
+                        {% set scale = (daily_draw_wh | float(0)) / historical_day_total %}
+                      {% endif %}
+                      {% set hourly_usage_wh = (base_usage_wh | float(0)) * (scale | float(1)) %}
+                      {% set before = (req.after | float(0)) + hourly_usage_wh - solar_wh %}
                       {% if before < (battery_floor_wh | float(0)) %}
                         {% set before = battery_floor_wh | float(0) %}
                       {% endif %}
@@ -125,7 +176,21 @@ actions:
                       {% set sim = namespace(level=current_battery_wh | float(0), max=current_battery_wh | float(0)) %}
                       {% for hour_key in hrs.out %}
                         {% set solar_wh = ns.merged.get(hour_key, 0) | float(0) %}
-                        {% set sim.level = (sim.level | float(0)) + solar_wh - (hourly_draw_wh | float(0)) %}
+                        {% set forecast_day = hour_key[:10] %}
+                        {% set historical_day = (as_datetime(forecast_day) - timedelta(days=7)).strftime('%Y-%m-%d') %}
+                        {% set historical_day_hours = ns.usage_by_day.get(historical_day, {}) %}
+                        {% set historical_day_total = ns.usage_day_totals.get(historical_day, 0) | float(0) %}
+                        {% set historical_hour = hour_key[11:13] | int %}
+                        {% set base_usage_wh = historical_day_hours.get(historical_hour, none) %}
+                        {% if base_usage_wh is none %}
+                          {% set base_usage_wh = hourly_draw_wh | float(0) %}
+                        {% endif %}
+                        {% set scale = 1 %}
+                        {% if historical_day_total > 0 and historical_day_total < (daily_draw_wh | float(0)) %}
+                          {% set scale = (daily_draw_wh | float(0)) / historical_day_total %}
+                        {% endif %}
+                        {% set hourly_usage_wh = (base_usage_wh | float(0)) * (scale | float(1)) %}
+                        {% set sim.level = (sim.level | float(0)) + solar_wh - hourly_usage_wh %}
                         {% if (sim.level | float(0)) > (sim.max | float(0)) %}
                           {% set sim.max = sim.level | float(0) %}
                         {% endif %}
