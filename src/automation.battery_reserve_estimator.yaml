@@ -18,6 +18,7 @@ actions:
     data:
       statistic_ids:
         - sensor.goodwe_house_consumption
+      # Previous-week hourly profile is used to estimate matching future-week hours.
       start_time: >-
         {{ (now() - timedelta(days=7)).replace(minute=0, second=0, microsecond=0).isoformat() }}
       period: hour
