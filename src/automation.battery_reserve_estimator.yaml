@@ -5,6 +5,8 @@ description: >
   allowed below the permitted floor. Then calculate the minimum starting battery
   charge required for that many days by working backwards hour by hour. Stores
   -1 if no usable solution can be found.
+
+# Recalculate frequently and when key operating constraints change.
 triggers:
   - minutes: /15
     trigger: time_pattern
@@ -14,6 +16,7 @@ triggers:
       - input_number.sell_by_wh
     trigger: state
 actions:
+  # Pull recent complete-day hourly house usage history from recorder.
   - action: recorder.get_statistics
     data:
       statistic_ids:
@@ -28,7 +31,9 @@ actions:
       types:
         - mean
     response_variable: house_consumption_stats
+
   - variables:
+      # Forecast and control entities used by the estimator.
       forecast_entities:
         - sensor.home_energy_production_today
         - sensor.home_energy_production_tomorrow
@@ -58,6 +63,8 @@ actions:
       export_window_end_hour: 20
       max_export_kwh_per_hour: 10
       max_days: 7
+
+      # Build a day/hour usage lookup from historical recorder data.
       historical_usage_estimate_json: >-
         {% set daily_draw_kwh = states(daily_draw_entity) | float(none) %} {%
         set daily_draw_wh = (daily_draw_kwh * 1000) if daily_draw_kwh is not
@@ -122,6 +129,8 @@ actions:
         {% endfor %}
 
         {{ out.days | to_json }}
+
+      # Calculate required starting battery and feasible zero-draw days.
       result_sufficiency: >-
         {% set current_battery_wh = states(current_battery_entity) | float(none)
         %} {% set battery_floor_wh = states(battery_floor_entity) | float(none) %}
@@ -259,6 +268,8 @@ actions:
             {% endif %}
           {% endif %}
         {% endif %}
+
+      # Determine if battery export is needed and how much is safe to export.
       result_export: >-
         {% set current_battery_wh = states(current_battery_entity) | float(none)
         %} {% set daily_draw_kwh = states(daily_draw_entity) | float(none) %} {%
@@ -363,7 +374,12 @@ actions:
             {{ 1 if export_eval.needs_export else 0 }}|{{ export_eval.safe_export_kwh | round(2) }}
           {% endif %}
         {% endif %}
+
+      # Pipe-delimited payload: required_kwh|zero_draw_days|hours_found|
+      # usable_day_count|max_battery_wh|hourly_draw_wh|needs_export|safe_export_kwh
       result: "{{ result_sufficiency }}|{{ result_export }}"
+
+  # Write estimator outputs to helper entities.
   - action: input_number.set_value
     target:
       entity_id: "{{ required_battery_kwh_entity }}"
@@ -386,6 +402,8 @@ actions:
       entity_id: "{{ safe_export_kwh_entity }}"
     data:
       value: "{{ result.split('|')[7] | float(0) }}"
+
+  # Keep a debug notification for troubleshooting template output.
   - action: persistent_notification.create
     data:
       title: Battery estimator debug
