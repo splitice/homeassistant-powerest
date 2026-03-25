@@ -147,6 +147,11 @@ actions:
       entity_id: "{{ zero_draw_days_entity }}"
     data:
       value: "{{ result.split('|')[1] | int(0) }}"
+  - action: input_number.set_value
+    target:
+      entity_id: "{{ max_battery_level }}"
+    data:
+      value: "{{ result.split('|')[4] | float(-1) }}"
   - action: persistent_notification.create
     data:
       title: Battery estimator debug
