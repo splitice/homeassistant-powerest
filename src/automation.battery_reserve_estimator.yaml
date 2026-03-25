@@ -9,7 +9,6 @@ triggers:
   - minutes: /15
     trigger: time_pattern
   - entity_id:
-      - sensor.battery_wh
       - sensor.estimated_daily_power_draw
       - input_number.battery_false_floor_wh
       - input_number.sell_by_wh
