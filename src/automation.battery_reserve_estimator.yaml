@@ -195,12 +195,13 @@ actions:
                     {% for hour_key in hrs.out %}
                       {# hour_key format is YYYY-MM-DDTHH:00:00 from merged forecast keys #}
                       {% set forecast_day = hour_key[:10] %}
-                      {% set today_start_dt = now().replace(hour=0, minute=0, second=0, microsecond=0) %}
+                      {% set today_day = now().strftime('%Y-%m-%d') %}
                       {% set historical_day_dt = as_datetime(forecast_day) - timedelta(days=7) %}
-                      {% if historical_day_dt >= today_start_dt %}
-                        {% set historical_day_dt = historical_day_dt - timedelta(days=7) %}
-                      {% endif %}
                       {% set historical_day = historical_day_dt.strftime('%Y-%m-%d') %}
+                      {% if historical_day >= today_day %}
+                        {% set historical_day_dt = historical_day_dt - timedelta(days=7) %}
+                        {% set historical_day = historical_day_dt.strftime('%Y-%m-%d') %}
+                      {% endif %}
                       {% set historical_day_data = historical_usage.get(historical_day, {}) %}
                       {% set historical_day_hours = historical_day_data.get('hours', {}) %}
                       {% set historical_day_scale = historical_day_data.get('scale', 1) | float(1) %}
