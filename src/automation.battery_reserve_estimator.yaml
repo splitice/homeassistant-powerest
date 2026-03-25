@@ -23,7 +23,7 @@ actions:
         {{ (now() - timedelta(days=7)).replace(minute=0, second=0, microsecond=0).isoformat() }}
       period: hour
       types:
-        - change
+        - mean
     response_variable: house_consumption_stats
   - variables:
       forecast_entities:
@@ -63,13 +63,14 @@ actions:
           {% if row is mapping %}
             {% set start = row.get('start') %}
             {% set start_dt = as_datetime(start) if start is not none else none %}
-            {% set usage_wh = row.get('change', 0) | float(0) %}
+            {% set usage_wh = row.get('mean', none) %}
+            {% set usage_wh = usage_wh | float(0) if usage_wh is not none else none %}
             {% if usage_wh < 0 %}
               {% set usage_wh = 0 %}
             {% endif %}
-            {% if start_dt is not none %}
+            {% if start_dt is not none and usage_wh is not none %}
               {% set day_key = start_dt.strftime('%Y-%m-%d') %}
-              {% set hour_key = start_dt.strftime('%H') | int %}
+              {% set hour_key = start_dt.strftime('%H') %}
               {% set existing_day = ns.hours_by_day.get(day_key, {}) %}
               {% set ns.hours_by_day = ns.hours_by_day | combine({
                 day_key: existing_day | combine({hour_key: usage_wh})
@@ -182,7 +183,7 @@ actions:
                       {% set historical_day_data = historical_usage.get(historical_day, {}) %}
                       {% set historical_day_hours = historical_day_data.get('hours', {}) %}
                       {% set historical_day_scale = historical_day_data.get('scale', 1) | float(1) %}
-                      {% set historical_hour = hour_key[11:13] | int %}
+                      {% set historical_hour = hour_key[11:13] %}
                       {% set base_usage_wh = historical_day_hours.get(historical_hour, none) %}
                       {% if base_usage_wh is none %}
                         {% set hourly_usage_wh = hourly_draw_wh | float(0) %}
