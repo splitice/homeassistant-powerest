@@ -130,6 +130,7 @@ actions:
         %} {% set battery_floor_wh = states(battery_floor_entity) | float(none)
         %} {% set daily_draw_kwh = states(daily_draw_entity) | float(none) %} {%
         set sell_by_wh = states(sell_by_wh_entity) | float(none) %} {%
+        set sell_by_wh_limit = sell_by_wh | float if sell_by_wh is not none else none %} {%
         set daily_draw_wh = (daily_draw_kwh * 1000) if daily_draw_kwh is not
         none else none %} {% set hourly_draw_wh = (daily_draw_wh / 24) if
         daily_draw_wh is not none else none %} {% set historical_usage =
@@ -207,6 +208,7 @@ actions:
               {% for hour_key in forecast_hours %}
                 {% set forecast_day = hour_key[:10] %}
                 {% set historical_day_dt = as_datetime(forecast_day) - timedelta(days=7) %}
+                {# Keep historical lookup in the past even around week/year boundaries. #}
                 {% if historical_day_dt >= export_eval.today_day_dt %}
                   {% set historical_day_dt = historical_day_dt - timedelta(days=7) %}
                 {% endif %}
@@ -232,11 +234,11 @@ actions:
                   {% endif %}
                 {% endif %}
               {% endfor %}
-              {% if export_eval.max_tomorrow is not none and (export_eval.max_tomorrow | float(0)) > (sell_by_wh | float(0)) %}
+              {% if export_eval.max_tomorrow is not none and (export_eval.max_tomorrow | float) > sell_by_wh_limit %}
                 {% set export_eval.needs_export = true %}
               {% endif %}
               {% if export_eval.needs_export and export_eval.end_tomorrow is not none and max_export_kwh_total > 0 %}
-                {% set exportable_surplus_kwh = ((export_eval.end_tomorrow | float(0)) - (sell_by_wh | float(0))) / 1000 %}
+                {% set exportable_surplus_kwh = ((export_eval.end_tomorrow | float) - sell_by_wh_limit) / 1000 %}
                 {% if exportable_surplus_kwh > 0 %}
                   {% if exportable_surplus_kwh < max_export_kwh_total %}
                     {% set export_eval.safe_export_kwh = exportable_surplus_kwh %}
