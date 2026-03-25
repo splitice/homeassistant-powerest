@@ -70,6 +70,7 @@ actions:
             {% endif %}
             {% if start_dt is not none and usage_wh is not none %}
               {% set day_key = start_dt.strftime('%Y-%m-%d') %}
+              {# keep hour keys as strings because tojson/from_json preserves object keys as strings #}
               {% set hour_key = start_dt.strftime('%H') %}
               {% set existing_day = ns.hours_by_day.get(day_key, {}) %}
               {% set ns.hours_by_day = ns.hours_by_day | combine({
