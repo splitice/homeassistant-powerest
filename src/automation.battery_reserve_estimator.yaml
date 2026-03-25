@@ -195,9 +195,9 @@ actions:
                     {% for hour_key in hrs.out %}
                       {# hour_key format is YYYY-MM-DDTHH:00:00 from merged forecast keys #}
                       {% set forecast_day = hour_key[:10] %}
-                      {% set today_day = now().strftime('%Y-%m-%d') %}
+                      {% set today_start_dt = now().replace(hour=0, minute=0, second=0, microsecond=0) %}
                       {% set historical_day_dt = as_datetime(forecast_day) - timedelta(days=7) %}
-                      {% if historical_day_dt.strftime('%Y-%m-%d') >= today_day %}
+                      {% if historical_day_dt >= today_start_dt %}
                         {% set historical_day_dt = historical_day_dt - timedelta(days=7) %}
                       {% endif %}
                       {% set historical_day = historical_day_dt.strftime('%Y-%m-%d') %}
