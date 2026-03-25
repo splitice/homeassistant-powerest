@@ -308,7 +308,7 @@ actions:
             {% set export_eval = namespace(
               tomorrow_day=(now() + timedelta(days=1)).strftime('%Y-%m-%d'),
               today_day=now().strftime('%Y-%m-%d'),
-              sell_by_hour=(sell_by_time.split(':')[0] | int(20)),
+              sell_by_hour=((sell_by_time.split(':')[0] if sell_by_time is string and ':' in sell_by_time else 20) | int(20)),
               now_decimal_hour=((now().hour | float(0)) + ((now().minute | float(0)) / 60) + ((now().second | float(0)) / 3600)),
               level=current_battery_wh | float(0),
               level_at_sell_by=none,
@@ -335,7 +335,8 @@ actions:
               {% set historical_day_data = historical_usage.get(historical_day, {}) %}
               {% set historical_day_hours = historical_day_data.get('hours', {}) %}
               {% set historical_day_scale = historical_day_data.get('scale', 1) | float(1) %}
-              {% set historical_hour = hour_key[11:13] %}
+              {% set forecast_hour = hour_key[11:13] %}
+              {% set historical_hour = forecast_hour %}
               {% set base_usage_wh = historical_day_hours.get(historical_hour, none) %}
               {% if base_usage_wh is none %}
                 {% set hourly_usage_wh = hourly_draw_wh | float(0) %}
@@ -345,7 +346,7 @@ actions:
               {% set solar_wh = ns.merged.get(hour_key, 0) | float(0) %}
               {% set export_eval.level = (export_eval.level | float(0)) + solar_wh - (hourly_usage_wh | float(0)) %}
               {% if forecast_day == export_eval.tomorrow_day %}
-                {% if (hour_key[11:13] | int(0)) == (export_eval.sell_by_hour | int(20)) %}
+                {% if (forecast_hour | int(0)) == (export_eval.sell_by_hour | int(20)) %}
                   {% set export_eval.level_at_sell_by = export_eval.level | float(0) %}
                 {% endif %}
               {% endif %}
