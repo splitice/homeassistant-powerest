@@ -296,7 +296,7 @@ actions:
             {% set export_eval = namespace(
               tomorrow_day=(now() + timedelta(days=1)).strftime('%Y-%m-%d'),
               today_day=now().strftime('%Y-%m-%d'),
-              now_hour=now().hour,
+              now_decimal_hour=((now().hour | float(0)) + ((now().minute | float(0)) / 60) + ((now().second | float(0)) / 3600)),
               level=current_battery_wh | float(0),
               max_tomorrow=none,
               min_tomorrow=none,
@@ -308,7 +308,7 @@ actions:
             {% set export_start_hour = export_window_start_hour | int %}
             {% set export_end_hour = export_window_end_hour | int %}
             {% if export_end_hour > export_start_hour %}
-              {% set active_export_start = [export_start_hour, export_eval.now_hour] | max %}
+              {% set active_export_start = [(export_start_hour | float(0)), export_eval.now_decimal_hour] | max %}
               {% if active_export_start < export_end_hour %}
                 {% set export_eval.export_hours = export_end_hour - active_export_start %}
               {% endif %}
