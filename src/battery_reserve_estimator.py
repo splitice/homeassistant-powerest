@@ -1,11 +1,21 @@
 """PyScript version of the Home Assistant battery reserve estimator."""
 
+import importlib
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 
-import battery_reserve_estimator_executor
-
-
+_MODULE_DIR = str(Path(__file__).resolve().parent) if "__file__" in globals() else None
+_PYMODULES_DIR = "/config/pyscript_modules"
+if _PYMODULES_DIR not in sys.path:
+    sys.path.insert(0, _PYMODULES_DIR)
+try:
+    battery_reserve_estimator_executor = importlib.import_module("battery_reserve_estimator_executor")
+except ModuleNotFoundError:
+    if _MODULE_DIR and _MODULE_DIR not in sys.path:
+        sys.path.insert(0, _MODULE_DIR)
+    battery_reserve_estimator_executor = importlib.import_module("battery_reserve_estimator_executor")
 _calculate_estimator_result = battery_reserve_estimator_executor.calculate_estimator_result
 
 
