@@ -25,7 +25,8 @@ except ModuleNotFoundError:
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError(
             "No module named 'battery_reserve_estimator_executor' "
-            f"(searched {', '.join(searched_paths)})"
+            f"(searched {', '.join(searched_paths)}). "
+            "Ensure battery_reserve_estimator_executor.py exists in one of those locations."
         ) from exc
 _calculate_estimator_result = battery_reserve_estimator_executor.calculate_estimator_result
 
