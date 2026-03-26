@@ -25,7 +25,7 @@ At a high level, it:
 1. reads historical hourly house consumption from recorder,
 2. builds a usage profile aligned by hour,
 3. merges all forecast `wh_period` values into a single hourly series,
-4. runs sufficiency and export simulations, and
+4. runs the calculation-heavy sufficiency and export simulations in a worker thread via `task.executor`, and
 5. writes results to `input_number` helpers and a debug notification.
 
 ## Installation

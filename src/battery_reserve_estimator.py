@@ -45,6 +45,16 @@ try:
 except NameError:
     hass = None
 
+try:
+    task
+except NameError:
+    class _Task:
+        @staticmethod
+        def executor(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    task = _Task()
+
 
 FORECAST_ENTITIES = [
     "sensor.home_energy_production_today",
@@ -391,6 +401,37 @@ def _calculate_export_result(current_battery_wh, sell_by_wh, hourly_draw_wh, his
     return f"{1 if needs_export else 0}|{round(safe_export_kwh, 2)}"
 
 
+def _calculate_estimator_result(
+    house_consumption_stats,
+    daily_draw_kwh,
+    current_battery_wh,
+    battery_floor_wh,
+    sell_by_wh,
+    hourly_draw_wh,
+    now_local,
+):
+    historical_usage = _build_historical_usage_estimate(house_consumption_stats, daily_draw_kwh)
+    merged = _merge_forecast_hours(now_local)
+
+    result_sufficiency = _calculate_sufficiency_result(
+        current_battery_wh=current_battery_wh,
+        battery_floor_wh=battery_floor_wh,
+        hourly_draw_wh=hourly_draw_wh,
+        historical_usage=historical_usage,
+        merged=merged,
+        now_local=now_local,
+    )
+    result_export = _calculate_export_result(
+        current_battery_wh=current_battery_wh,
+        sell_by_wh=sell_by_wh,
+        hourly_draw_wh=hourly_draw_wh,
+        historical_usage=historical_usage,
+        merged=merged,
+        now_local=now_local,
+    )
+    return f"{result_sufficiency}|{result_export}"
+
+
 async def _service_call(domain, service_name, **data):
     if hass is None:
         raise RuntimeError("hass is not available; enable pyscript hass_is_global for this script")
@@ -431,26 +472,16 @@ async def _run_estimator():
     daily_draw_wh = daily_draw_kwh * 1000 if daily_draw_kwh is not None else None
     hourly_draw_wh = (daily_draw_wh / 24.0) if daily_draw_wh is not None else None
 
-    historical_usage = _build_historical_usage_estimate(house_consumption_stats, daily_draw_kwh)
-    merged = _merge_forecast_hours(now_local)
-
-    result_sufficiency = _calculate_sufficiency_result(
-        current_battery_wh=current_battery_wh,
-        battery_floor_wh=battery_floor_wh,
-        hourly_draw_wh=hourly_draw_wh,
-        historical_usage=historical_usage,
-        merged=merged,
-        now_local=now_local,
+    result = task.executor(
+        _calculate_estimator_result,
+        house_consumption_stats,
+        daily_draw_kwh,
+        current_battery_wh,
+        battery_floor_wh,
+        sell_by_wh,
+        hourly_draw_wh,
+        now_local,
     )
-    result_export = _calculate_export_result(
-        current_battery_wh=current_battery_wh,
-        sell_by_wh=sell_by_wh,
-        hourly_draw_wh=hourly_draw_wh,
-        historical_usage=historical_usage,
-        merged=merged,
-        now_local=now_local,
-    )
-    result = f"{result_sufficiency}|{result_export}"
 
     parts = result.split("|")
     await _service_call(
