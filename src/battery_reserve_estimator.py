@@ -468,6 +468,7 @@ async def _run_estimator():
     result = task.executor(
         _calculate_estimator_result,
         house_consumption_stats,
+        HOUSE_CONSUMPTION_STATISTIC_ID,
         daily_draw_kwh,
         current_battery_wh,
         battery_floor_wh,

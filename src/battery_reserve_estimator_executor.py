@@ -8,7 +8,6 @@ EXPORT_WINDOW_START_HOUR = 18
 EXPORT_WINDOW_END_HOUR = 20
 MAX_EXPORT_KWH_PER_HOUR = 10
 MAX_DAYS = 7
-HOUSE_CONSUMPTION_STATISTIC_ID = "sensor.goodwe_house_consumption"
 
 
 def _coerce_float(value):
@@ -76,10 +75,10 @@ def _get_sell_by_hour():
     return 20
 
 
-def _build_historical_usage_estimate(house_consumption_stats, daily_draw_kwh):
+def _build_historical_usage_estimate(house_consumption_stats, statistic_id, daily_draw_kwh):
     daily_draw_wh = daily_draw_kwh * 1000 if daily_draw_kwh is not None else None
     stats_root = house_consumption_stats.get("statistics", {}) if isinstance(house_consumption_stats, dict) else {}
-    rows = stats_root.get(HOUSE_CONSUMPTION_STATISTIC_ID, []) if isinstance(stats_root, dict) else []
+    rows = stats_root.get(statistic_id, []) if isinstance(stats_root, dict) else []
 
     hours_by_day = {}
     totals = {}
@@ -293,6 +292,7 @@ def _calculate_export_result(current_battery_wh, sell_by_wh, hourly_draw_wh, his
 
 def calculate_estimator_result(
     house_consumption_stats,
+    statistic_id,
     daily_draw_kwh,
     current_battery_wh,
     battery_floor_wh,
@@ -301,7 +301,7 @@ def calculate_estimator_result(
     now_local,
     forecast_periods,
 ):
-    historical_usage = _build_historical_usage_estimate(house_consumption_stats, daily_draw_kwh)
+    historical_usage = _build_historical_usage_estimate(house_consumption_stats, statistic_id, daily_draw_kwh)
     merged = _merge_forecast_hours(now_local, forecast_periods)
 
     result_sufficiency = _calculate_sufficiency_result(
