@@ -45,16 +45,6 @@ try:
 except NameError:
     hass = None
 
-try:
-    task
-except NameError:
-    class _Task:
-        @staticmethod
-        def executor(func, *args, **kwargs):
-            return func(*args, **kwargs)
-
-    task = _Task()
-
 
 FORECAST_ENTITIES = [
     "sensor.home_energy_production_today",
