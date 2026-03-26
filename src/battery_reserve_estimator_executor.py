@@ -162,7 +162,7 @@ def _hourly_usage_for_forecast(hour_key, historical_usage, today_day, hourly_dra
     if historical_day_scale is None:
         historical_day_scale = 1.0
 
-    historical_hour = forecast_day and hour_key[11:13]
+    historical_hour = hour_key[11:13] if forecast_day else None
     base_usage_wh = _coerce_float(historical_day_hours.get(historical_hour))
     if base_usage_wh is None:
         return float(hourly_draw_wh)
