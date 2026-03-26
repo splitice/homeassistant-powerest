@@ -97,6 +97,11 @@ def _coerce_float(value):
         return None
 
 
+def _coerce_float_or_default(value, default):
+    parsed = _coerce_float(value)
+    return default if parsed is None else parsed
+
+
 def _parse_datetime(value):
     if value is None:
         return None
@@ -448,7 +453,12 @@ async def _run_estimator():
     result = f"{result_sufficiency}|{result_export}"
 
     parts = result.split("|")
-    await _service_call("input_number", "set_value", entity_id=REQUIRED_BATTERY_KWH_ENTITY, value=_coerce_float(parts[0]) or -1)
+    await _service_call(
+        "input_number",
+        "set_value",
+        entity_id=REQUIRED_BATTERY_KWH_ENTITY,
+        value=_coerce_float_or_default(parts[0], -1),
+    )
     await _service_call(
         "input_number",
         "set_value",
@@ -459,7 +469,7 @@ async def _run_estimator():
         "input_number",
         "set_value",
         entity_id=MAX_BATTERY_LEVEL_ENTITY,
-        value=_coerce_float(parts[4]) or -1,
+        value=_coerce_float_or_default(parts[4], -1),
     )
     await _service_call(
         "input_number",
