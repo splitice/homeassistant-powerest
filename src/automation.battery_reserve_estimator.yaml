@@ -1,10 +1,10 @@
 alias: "Battery: Reserve Estimator"
 description: >
-  Estimate how many full days (up to 7) the house can run from current battery
-  reserves plus solar forecast, using hourly simulation with no hourly deficits
-  allowed below the permitted floor. Then calculate the minimum starting battery
-  charge required for that many days by working backwards hour by hour. Stores
-  -1 if no usable solution can be found.
+  Estimate how many hours (within the available 7-day forecast window) the house
+  can run from current battery reserves plus solar forecast, using hourly
+  simulation with no hourly deficits allowed below the permitted floor. Then
+  calculate the minimum starting battery charge required for that duration by
+  working backwards hour by hour. Stores -1 if no usable solution can be found.
 
 # Recalculate frequently and when key operating constraints change.
 triggers:
@@ -57,7 +57,7 @@ actions:
       sell_by_wh_entity: input_number.sell_by_wh
       sell_by_time: "20:00"
       required_battery_kwh_entity: input_number.required_battery_kwh
-      zero_draw_days_entity: input_number.zero_draw_days_possible
+      battery_hours_remaining_entity: input_number.battery_hours_remaining
       max_battery_level: input_number.battery_est_max_level_wh
       safe_export_kwh_entity: input_number.battery_safe_export_kwh
       export_window_start_hour: 18
@@ -128,7 +128,7 @@ actions:
 
         {{ out.days | to_json }}
 
-      # Calculate required starting battery and feasible zero-draw days.
+      # Calculate required starting battery and feasible battery hours remaining.
       result_sufficiency: >-
         {% set current_battery_wh = states(current_battery_entity) | float(none) %}
         {% set battery_floor_wh = states(battery_floor_entity) | float(none) %}
@@ -144,7 +144,7 @@ actions:
           {% set ns = namespace(
             merged={},
             days=[],
-            best_days=0,
+            best_hours=0,
             best_required=-1,
             best_max_battery=current_battery_wh,
             hours_found=0,
@@ -183,21 +183,24 @@ actions:
             {% endfor %}
 
             {% set forecast_days = ns.days[:max_days] %}
-            {% set usable_day_count = forecast_days | count %}
-            {% if usable_day_count == 0 %}
+            {% set usable_days_count = forecast_days | count %}
+            {% if usable_days_count == 0 %}
               -1|0|{{ ns.hours_found }}|0|{{ current_battery_wh }}|{{ hourly_draw_wh }}
             {% else %}
-              {% for day_count in range(usable_day_count, 0, -1) %}
+              {% set candidate_hours_full = namespace(out=[]) %}
+              {% for h in forecast_hours %}
+                {% if h[:10] in forecast_days %}
+                  {% set candidate_hours_full.out = candidate_hours_full.out + [h] %}
+                {% endif %}
+              {% endfor %}
+              {% set usable_hours_count = candidate_hours_full.out | count %}
+              {% if usable_hours_count == 0 %}
+                -1|0|{{ ns.hours_found }}|{{ usable_days_count }}|{{ current_battery_wh }}|{{ hourly_draw_wh }}
+              {% else %}
+              {% for hour_count in range(usable_hours_count, 0, -1) %}
                 {% if not ns.found %}
-                  {% set candidate_days = forecast_days[:day_count] %}
-                  {% set hrs = namespace(out=[]) %}
+                  {% set hrs = namespace(out=candidate_hours_full.out[:hour_count]) %}
                   {% set usage = namespace(by_hour={}) %}
-
-                  {% for h in forecast_hours %}
-                    {% if h[:10] in candidate_days %}
-                      {% set hrs.out = hrs.out + [h] %}
-                    {% endif %}
-                  {% endfor %}
 
                   {% if (hrs.out | count) > 0 %}
                     {% for hour_key in hrs.out %}
@@ -247,7 +250,7 @@ actions:
                           {% set sim.max = sim.level | float(0) %}
                         {% endif %}
                       {% endfor %}
-                      {% set ns.best_days = day_count %}
+                      {% set ns.best_hours = hour_count %}
                       {% set ns.best_required = req.after | float(0) %}
                       {% set ns.best_max_battery = sim.max | float(0) %}
                       {% set ns.found = true %}
@@ -256,10 +259,11 @@ actions:
                 {% endif %}
               {% endfor %}
 
-              {% if ns.best_days > 0 %}
-                {{ (ns.best_required / 1000) | round(2) }}|{{ ns.best_days }}|{{ ns.hours_found }}|{{ usable_day_count }}|{{ ns.best_max_battery }}|{{ hourly_draw_wh }}
+              {% if ns.best_hours > 0 %}
+                {{ (ns.best_required / 1000) | round(2) }}|{{ ns.best_hours }}|{{ ns.hours_found }}|{{ usable_days_count }}|{{ ns.best_max_battery }}|{{ hourly_draw_wh }}
               {% else %}
-                -1|0|{{ ns.hours_found }}|{{ usable_day_count }}|{{ current_battery_wh }}|{{ hourly_draw_wh }}
+                -1|0|{{ ns.hours_found }}|{{ usable_days_count }}|{{ current_battery_wh }}|{{ hourly_draw_wh }}
+              {% endif %}
               {% endif %}
             {% endif %}
           {% endif %}
@@ -361,8 +365,8 @@ actions:
           {% endif %}
         {% endif %}
 
-      # Pipe-delimited payload: required_kwh|zero_draw_days|hours_found|
-      # usable_day_count|max_battery_wh|hourly_draw_wh|needs_export|safe_export_kwh
+      # Pipe-delimited payload: required_kwh|battery_hours_remaining|hours_found|
+      # usable_days_count|max_battery_wh|hourly_draw_wh|needs_export|safe_export_kwh
       result: "{{ result_sufficiency }}|{{ result_export }}"
 
   # Write estimator outputs to helper entities.
@@ -373,7 +377,7 @@ actions:
       value: "{{ result.split('|')[0] | float(-1) }}"
   - action: input_number.set_value
     target:
-      entity_id: "{{ zero_draw_days_entity }}"
+      entity_id: "{{ battery_hours_remaining_entity }}"
     data:
       value: "{{ result.split('|')[1] | int(0) }}"
   - action: input_number.set_value
