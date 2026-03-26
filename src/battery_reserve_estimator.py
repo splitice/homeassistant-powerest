@@ -15,14 +15,17 @@ if _PYMODULES_DIR not in sys.path:
 try:
     import battery_reserve_estimator_executor
 except ModuleNotFoundError:
+    searched_paths = [_PYMODULES_DIR]
     if _MODULE_DIR and _MODULE_DIR not in sys.path:
         sys.path.insert(0, _MODULE_DIR)
+    if _MODULE_DIR:
+        searched_paths.append(_MODULE_DIR)
     try:
         import battery_reserve_estimator_executor
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError(
             "No module named 'battery_reserve_estimator_executor' "
-            f"(searched {_PYMODULES_DIR} and {_MODULE_DIR or 'current sys.path'})"
+            f"(searched {', '.join(searched_paths)})"
         ) from exc
 _calculate_estimator_result = battery_reserve_estimator_executor.calculate_estimator_result
 
