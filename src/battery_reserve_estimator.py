@@ -1,22 +1,11 @@
 """PyScript version of the Home Assistant battery reserve estimator."""
 
-import asyncio
-import importlib
-import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 
 
-_MODULE_DIR = str(Path(__file__).resolve().parent) if "__file__" in globals() else None
-_PYMODULES_DIR = "/config/pyscript_modules"
-if _PYMODULES_DIR not in sys.path:
-    sys.path.insert(0, _PYMODULES_DIR)
-try:
-    battery_reserve_estimator_executor = importlib.import_module("battery_reserve_estimator_executor")
-except ModuleNotFoundError:
-    if _MODULE_DIR and _MODULE_DIR not in sys.path:
-        sys.path.insert(0, _MODULE_DIR)
-    battery_reserve_estimator_executor = importlib.import_module("battery_reserve_estimator_executor")
+import battery_reserve_estimator_executor
+
+
 _calculate_estimator_result = battery_reserve_estimator_executor.calculate_estimator_result
 
 
@@ -95,9 +84,6 @@ EXPORT_WINDOW_END_HOUR = 20
 MAX_EXPORT_KWH_PER_HOUR = 10
 MAX_DAYS = 7
 HOUSE_CONSUMPTION_STATISTIC_ID = "sensor.goodwe_house_consumption"
-
-_RUN_LOCK = asyncio.Lock()
-
 
 def _coerce_float(value):
     if value is None:
@@ -512,11 +498,8 @@ async def _run_estimator_once():
     if hass is None:
         log.error("Battery reserve estimator requires pyscript hass_is_global: true")
         return None
-    if _RUN_LOCK.locked():
-        log.debug("Battery reserve estimator already running; skipping overlapping trigger")
-        return None
-    async with _RUN_LOCK:
-        return await _run_estimator()
+    task.unique("battery_reserve_estimator", kill_me=True)
+    return await _run_estimator()
 
 
 @service
