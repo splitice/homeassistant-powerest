@@ -62,7 +62,7 @@ At a high level, it:
 
 6. Reload PyScript or restart Home Assistant.
 
-## Behaviour
+## Behavior
 
 The PyScript preserves the same entity inputs, trigger cadence, result helpers,
 and debug notification output as the prior YAML automation. It also exposes an
