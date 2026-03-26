@@ -33,16 +33,20 @@ At a high level, it:
 1. Install the [PyScript integration](https://hacs-pyscript.readthedocs.io/) in
    Home Assistant.
 2. In your Home Assistant configuration, enable the global `hass` object for
-   PyScript because this script reads recorder statistics via
-   `hass.services.async_call`:
+   PyScript and allow importing the regular Python helper module used by
+   `task.executor`, because this script reads recorder statistics via
+   `hass.services.async_call` and offloads calculations to an imported module:
 
    ```yaml
    pyscript:
      hass_is_global: true
+     allow_all_imports: true
    ```
 
 3. Copy `src/battery_reserve_estimator.py` from this repository into your Home
-   Assistant `<config>/pyscript/` directory.
+   Assistant `<config>/pyscript/` directory, and copy
+   `src/battery_reserve_estimator_executor.py` into
+   `<config>/pyscript_modules/`.
 4. Remove or disable any previous YAML automation version of this estimator so it
    does not run twice.
 5. Ensure the following entities already exist with the same names used by the
